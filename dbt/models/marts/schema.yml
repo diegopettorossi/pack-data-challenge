@@ -1,0 +1,112 @@
+version: 2
+
+models:
+  - name: dim_users
+    description: >
+      User dimension — SCD2 with SHA-256 surrogate key.
+      One row per user snapshot. valid_to = NULL indicates the current record.
+    columns:
+      - name: user_hk
+        description: "SHA256(user_id | company_id | valid_from) — surrogate PK."
+        tests: [unique, not_null]
+      - name: user_id
+        tests: [not_null]
+      - name: company_id
+        tests: [not_null]
+      - name: signup_date
+        tests: [not_null]
+      - name: valid_from
+        tests: [not_null]
+      - name: inserted_at
+        tests: [not_null]
+
+  - name: dim_mentors
+    description: >
+      Mentor dimension — SCD2 managed by the snap_mentors dbt snapshot.
+      dbt detects tier changes, closes old records (sets valid_to), and inserts
+      new ones automatically on each `dbt snapshot` run.
+      valid_to = NULL indicates the current record.
+    columns:
+      - name: mentor_hk
+        description: "SHA256(mentor_id | tier | dbt_valid_from) — surrogate PK."
+        tests: [unique, not_null]
+      - name: mentor_id
+        tests: [not_null]
+      - name: tier
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Gold', 'Silver', 'Bronze']
+      - name: valid_from
+        tests: [not_null]
+
+  - name: fct_bookings
+    description: >
+      Booking fact table reconstructed from the booking event stream.
+      booking_hk is the DB-layer dedup key; booking_id is the source business key.
+      LEAD-bounded pairing and no-show detection live in stg_booking_pairs.
+      outcome_status values: confirmed_attended, no_show, cancelled, pending.
+    columns:
+      - name: booking_hk
+        description: "SHA256(user_id | mentor_id | requested_at) — surrogate PK."
+        tests: [unique, not_null]
+      - name: booking_id
+        description: "Source event_id of the booking_requested event."
+        tests: [not_null]
+      - name: user_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_users')
+              field: user_id
+              severity: warn   # bookings can reference users absent from the CSV snapshot
+      - name: mentor_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_mentors')
+              field: mentor_id
+      - name: requested_at
+        tests: [not_null]
+      - name: outcome_status
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['confirmed_attended', 'no_show', 'cancelled', 'pending']
+      - name: is_orphan_request
+        tests: [not_null]
+      - name: inserted_at
+        tests: [not_null]
+
+  - name: fct_sessions
+    description: >
+      Session fact table reconstructed from the booking event stream.
+      session_hk is the DB-layer dedup key; session_id is the source business key.
+      LEAD-bounded pairing logic lives in stg_session_pairs.
+    columns:
+      - name: session_hk
+        description: "SHA256(user_id | mentor_id | started_at) — surrogate PK."
+        tests: [unique, not_null]
+      - name: session_id
+        description: "Source event_id — business key for lineage and DQ check 5."
+        tests: [not_null]
+      - name: user_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_users')
+              field: user_id
+      - name: mentor_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_mentors')
+              field: mentor_id
+      - name: started_at
+        tests: [not_null]
+      - name: duration_minutes
+        tests: [not_null]
+      - name: is_duration_estimated
+        tests: [not_null]
+      - name: inserted_at
+        tests: [not_null]

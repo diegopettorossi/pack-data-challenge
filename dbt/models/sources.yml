@@ -1,0 +1,54 @@
+version: 2
+
+# Raw tables are loaded by ingest.py (Python/Polars) before dbt runs.
+# dbt sources declare them as the entry point for lineage tracking.
+
+sources:
+  - name: raw
+    description: >
+      Raw layer — tables loaded verbatim by ingest.py from source files.
+      All type casting and business logic lives in staging models.
+    schema: main
+    tables:
+      - name: raw_users
+        description: "Users from users_db_export.csv (Postgres DB export)."
+        columns:
+          - name: user_id
+            description: "User identifier (may be int or string in source — cast at ingest)."
+            tests: [not_null]
+          - name: company_id
+            tests: [not_null]
+          - name: signup_date
+            tests: [not_null]
+
+      - name: raw_mentors
+        description: "Mentor tier sheet from mentor_tiers.csv (manual Ops file)."
+        columns:
+          - name: mentor_id
+            tests: [not_null]
+          - name: tier
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['Gold', 'Silver', 'Bronze']
+          - name: hourly_rate
+            tests: [not_null]
+
+      - name: raw_events
+        description: "Booking event stream from booking_events.json (3rd-party tool webhook)."
+        columns:
+          - name: event_id
+            tests: [unique, not_null]
+          - name: event_type
+            tests:
+              - accepted_values:
+                  values:
+                    - 'session_started'
+                    - 'session_ended'
+                    - 'booking_requested'
+                    - 'booking_confirmed'
+                    - 'booking_cancelled'
+          - name: user_id
+            tests: [not_null]
+          - name: mentor_id
+            tests: [not_null]

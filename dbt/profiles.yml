@@ -1,0 +1,22 @@
+# profiles.yml — dbt connection profiles for DuckDB.
+#
+# In production this file lives at ~/.dbt/profiles.yml (never in source control,
+# since it may contain credentials for remote warehouses).
+# For this local challenge it is checked in alongside the project for convenience.
+#
+# Both targets point to the same warehouse file locally because run_pipeline.py
+# and dbt share a single DuckDB file. To separate dev/prod on a real deployment,
+# change dev.path to e.g. ../warehouse_dev.duckdb and use a dedicated staging DB.
+
+pack_data:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ../warehouse.duckdb
+      threads: 4
+
+    prod:
+      type: duckdb
+      path: ../warehouse.duckdb
+      threads: 4

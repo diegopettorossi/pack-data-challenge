@@ -1,0 +1,41 @@
+name: 'pack_data'
+version: '1.0.0'
+config-version: 2
+
+profile: 'pack_data'
+
+model-paths:    ["models"]
+analysis-paths: ["analyses"]
+test-paths:     ["tests"]
+macro-paths:    ["macros"]
+snapshot-paths: ["snapshots"]
+seed-paths:     ["seeds"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  pack_data:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: incremental
+
+snapshots:
+  pack_data:
+    +target_schema: main
+
+# Pipeline variables — override at runtime:
+#   dbt run --vars '{"default_duration_minutes": 45}'
+#   dbt compile --vars '{"tiers_group_a": ["Gold","Platinum"], "tiers_group_b": ["Silver","Bronze"]}'
+vars:
+  default_duration_minutes: 30
+
+  # ── Rebooking analysis (mirrors config.yaml defaults) ──────────────────────
+  # Both groups accept any number of tier names.
+  tiers_group_a:         ["Gold"]
+  tiers_group_b:         ["Silver", "Bronze"]
+  rebooking_window_days: 30   # set to 0 / null for no time limit
+
+  # ── All tiers the system recognises (kept in sync with config.yaml) ────────
+  known_tiers:           ["Gold", "Silver", "Bronze"]

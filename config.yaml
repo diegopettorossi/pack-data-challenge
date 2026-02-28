@@ -1,0 +1,60 @@
+# config.yaml — Single source of truth for all pipeline defaults.
+#
+# Edit THIS FILE to change pipeline behaviour. No Python or SQL code needs
+# to be touched. config.py reads this file at startup via PipelineConfig.from_yaml().
+#
+# If this file is missing, PipelineConfig() falls back to hard-coded Python
+# defaults (identical values) — the pipeline never breaks due to a missing YAML.
+
+# ── Session modeling ──────────────────────────────────────────────────────────
+session:
+  # Fallback duration (minutes) for sessions that have a session_started event
+  # but no session_ended (browser crash scenario).
+  # Injected into fct_sessions.sql at run time — change here, not in SQL.
+  default_duration_minutes: 30
+
+# ── Rebooking analysis ────────────────────────────────────────────────────────
+rebooking:
+  # Mentor tiers to compare by default. Must be mutually exclusive.
+  # Supports any grouping: 1-vs-1, 1-vs-many, many-vs-many.
+  # Tier names must match dim_mentors.tier exactly (title-case: Gold, Silver, Bronze).
+  tiers_group_a: ["Gold"]
+  tiers_group_b: ["Silver", "Bronze"]
+
+  # Days after a user's first session to count a rebooking.
+  # Set to null (no quotes) for no time limit — any subsequent session counts.
+  window_days: 30
+
+# ── Data quality thresholds ───────────────────────────────────────────────────
+data_quality:
+  # Maximum acceptable fraction of sessions with no matching user in dim_users.
+  # Pipeline HALTS if this is exceeded (Check 2).
+  max_orphan_rate: 0.05
+
+  # Sessions longer than this (minutes) trigger a WARNING but do not halt
+  # the pipeline (Check 4). Adjust if your mentors regularly run long sessions.
+  max_duration_minutes: 240
+
+# ── Database ──────────────────────────────────────────────────────────────────
+database:
+  # Path to the DuckDB warehouse file. Relative paths are resolved from the solution/ root directory.
+  path: warehouse.duckdb
+
+# ── Environment ──────────────────────────────────────────────────────────────
+# Deployment environment: dev | staging | prod
+# Drives default db_path if database.path is not overridden:
+#   dev     → warehouse_dev.duckdb
+#   staging → warehouse_staging.duckdb
+#   prod    → warehouse.duckdb
+environment: dev
+
+# ── Guardrails ────────────────────────────────────────────────────────────────
+guardrails:
+  # Maximum wall-clock seconds allowed for the full pipeline run.
+  # The StepTimer in run_pipeline.py raises PipelineTimeoutError if exceeded.
+  # Set to 0 to disable the timeout entirely (useful in CI/low-spec environments).
+  step_timeout_seconds: 300
+
+# ── Application ───────────────────────────────────────────────────────────────
+# All mentor tiers the system knows about. Used for validation and sanity checks.
+known_tiers: ["Gold", "Silver", "Bronze"]

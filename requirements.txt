@@ -1,0 +1,5 @@
+duckdb>=0.10.0
+polars>=0.20.0
+pyyaml>=6.0
+streamlit>=1.32.0
+dbt-duckdb>=1.7.0

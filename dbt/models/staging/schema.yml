@@ -1,0 +1,69 @@
+version: 2
+
+models:
+  - name: stg_users
+    description: >
+      Deduplicated and cast users from raw_users.
+      Keeps the earliest signup_date row per user_id.
+    columns:
+      - name: user_id
+        description: "User identifier (BIGINT)."
+        tests: [unique, not_null]
+      - name: company_id
+        tests: [not_null]
+      - name: signup_date
+        tests: [not_null]
+      - name: status
+        tests: [not_null]
+
+  - name: stg_mentors
+    description: "Cleaned and normalised mentors: TRIM on mentor_id, hourly_rate cast to INTEGER."
+    columns:
+      - name: mentor_id
+        tests: [unique, not_null]
+      - name: tier
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Gold', 'Silver', 'Bronze']
+      - name: hourly_rate
+        tests: [not_null]
+
+  - name: stg_session_pairs
+    description: >
+      LEAD-bounded session start/end pairs reconstructed from raw_events.
+      One row per session_started event, joined to nearest valid session_ended.
+      NULL ended_at = missing end event (browser crash scenario).
+    columns:
+      - name: session_start_event_id
+        description: "Source event_id from raw_events (natural session key)."
+        tests: [unique, not_null]
+      - name: user_id
+        tests: [not_null]
+      - name: mentor_id
+        tests: [not_null]
+      - name: started_at
+        tests: [not_null]
+
+  - name: stg_booking_pairs
+    description: >
+      LEAD-bounded booking lifecycle pairs reconstructed from raw_events.
+      One row per booking_requested event, joined to the nearest outcome
+      (booking_confirmed or booking_cancelled) within the LEAD window.
+      For confirmed bookings, first_session_at captures whether a
+      session_started followed (no-show detection).
+      is_orphan_request = TRUE flags requests with no follow-up (DQ signal).
+    columns:
+      - name: booking_request_event_id
+        description: "Source event_id of the booking_requested event."
+        tests: [unique, not_null]
+      - name: user_id
+        tests: [not_null]
+      - name: mentor_id
+        tests: [not_null]
+      - name: requested_at
+        tests: [not_null]
+      - name: had_session_started
+        tests: [not_null]
+      - name: is_orphan_request
+        tests: [not_null]
