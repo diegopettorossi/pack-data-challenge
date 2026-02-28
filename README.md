@@ -4,15 +4,27 @@
 
 ---
 
+> **macOS / Linux:** use `python3` if `python` is not on your PATH. `make` is available by default on macOS.
+> **Windows:** all commands work with plain `python`. For the `make` targets, use Git Bash + `choco install make`, or call the commands directly.
+
 ## Quick Start
 
 ```bash
-pip install -r requirements.txt
-pip install -r requirements-dev.txt   # includes pytest
+# macOS / Linux
+make install
+make pipeline          # ingest + transform + analysis
+make test              # 42 pytest tests
+python -m streamlit run app.py   # optional: 4-tab interactive UI
+```
 
-python run_pipeline.py   # runs end-to-end, prints the CEO answer
-pytest tests/            # 42 tests
-streamlit run app.py     # optional: 4-tab interactive UI
+```bash
+# Windows (no make)
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
+
+python run_pipeline.py
+python -m pytest tests/
+python -m streamlit run app.py
 ```
 
 ### Pipeline Modes
@@ -97,6 +109,7 @@ solution/
 ├── .github/
 │   └── workflows/ci.yml         ← pytest matrix (3.11+3.12) + dbt compile check
 ├── logs/                        ← JSON run logs (logs/YYYY/MM/YYYYMMDD.json)
+├── Makefile                     ← make install / test / pipeline / dbt-build / dbt-docs (macOS/Linux)
 ├── config.yaml                  ← ★ All defaults — edit this, not code
 ├── config.py                    ← PipelineConfig dataclass + YAML loader
 ├── run_pipeline.py              ← End-to-end orchestrator + run logging
@@ -308,6 +321,76 @@ Automated checks run after every transformation in two layers:
 | 1 | No negative session durations | validate.py | 0 | ✅ PASS |
 | 4 | Session duration > 4 hours | validate.py | Warning only | ✅ PASS (0 outliers) |
 | 6 | Configured tier names exist in dim_mentors | validate.py | 0 missing | ✅ PASS |
+
+---
+
+## Tracking Plan (Example)
+
+### Naming conventions
+
+| Rule | Example |
+|---|---|
+| Event names: `object_action` snake_case | `booking_requested`, `session_ended` |
+| Property names: snake_case | `mentor_id`, `is_duration_estimated` |
+| IDs: always strings in the payload (cast to BIGINT at ingestion) | `"user_id": "42"` |
+| Timestamps: ISO-8601 UTC | `"timestamp": "2026-01-15T10:00:00Z"` |
+| Booleans: explicit `true`/`false` | `"had_session_started": true` |
+
+### Event catalogue
+
+#### Booking lifecycle (currently in `booking_events.json`)
+
+| Event | Trigger | Required properties | Optional properties |
+|---|---|---|---|
+| `booking_requested` | User submits booking form | `event_id`, `user_id`, `mentor_id`, `timestamp` | `requested_duration_minutes` |
+| `booking_confirmed` | Mentor accepts | `event_id`, `user_id`, `mentor_id`, `timestamp` | `confirmed_start_time` |
+| `booking_cancelled` | Either party cancels | `event_id`, `user_id`, `mentor_id`, `timestamp` | `cancelled_by` (`user`\|`mentor`), `cancellation_reason` |
+| `session_started` | Session call begins | `event_id`, `user_id`, `mentor_id`, `timestamp` | — |
+| `session_ended` | Session call ends | `event_id`, `user_id`, `mentor_id`, `timestamp` | `duration_seconds` |
+
+**Gap identified in current data:** `booking_cancelled` does not include `cancelled_by`. Without it, the pipeline cannot distinguish user-initiated vs mentor-initiated cancellations — a key churn signal.
+
+#### User lifecycle (currently missing — should be added)
+
+| Event | Trigger | Required properties | Optional properties |
+|---|---|---|---|
+| `user_signed_up` | Account creation completes | `user_id`, `company_id`, `timestamp` | `signup_source` (`organic`\|`invite`\|`sso`) |
+| `user_activated` | First session completed | `user_id`, `timestamp` | — |
+| `user_churned` | Status set to `churned` in Postgres | `user_id`, `timestamp` | `churn_reason` |
+
+#### Mentor engagement (currently missing)
+
+| Event | Trigger | Required properties | Optional properties |
+|---|---|---|---|
+| `mentor_profile_viewed` | User views mentor profile | `user_id`, `mentor_id`, `timestamp` | `viewed_from` (`search`\|`recommended`\|`direct`) |
+| `session_reviewed` | User submits post-session rating | `user_id`, `mentor_id`, `session_id`, `timestamp`, `rating` (1–5) | `review_text` |
+
+### Data destinations
+
+| Source | Transport | Raw landing | Notes |
+|---|---|---|---|
+| Web/mobile app events | PostHog JS SDK → `booking_events` stream | `raw_events` table | PostHog HogQL can query directly; Fivetran syncs to warehouse |
+| Postgres (users, status) | Fivetran CDC connector | `raw_users` table | `updated_at` column required for SCD2 |
+| Ops sheet (mentor tiers) | Fivetran Google Sheets connector | `raw_mentors` table | Sync weekly (low change frequency) |
+
+### Required Postgres columns to add
+
+For correct SCD2 and CDC, the Postgres `users` table must expose:
+```sql
+ALTER TABLE users ADD COLUMN updated_at TIMESTAMP DEFAULT NOW();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION trigger_set_timestamp();
+```
+Without `updated_at`, Fivetran falls back to full-table sync and `valid_from` in `dim_users` reflects pipeline run time, not the business event time (see Known Limitations §1).
+
+### Instrumentation checklist (for engineering handoff)
+
+- [ ] Add `cancelled_by` and `cancellation_reason` to `booking_cancelled` events
+- [ ] Emit `user_signed_up` from the registration flow
+- [ ] Emit `session_reviewed` after post-session NPS prompt
+- [ ] Ensure all events include `event_id` (UUID v4) for idempotent ingestion
+- [ ] Add `updated_at` trigger to Postgres `users` table
+- [ ] Standardise `mentor_id` format in the booking tool to match the Ops sheet (currently requires `TRIM()` at ingestion)
 
 ---
 
