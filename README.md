@@ -453,8 +453,6 @@ This solution implements most modern data stack patterns at local scale.
 
 **Remaining gaps**
 
-*No integration test for the full pipeline.* The suite tests each component in isolation but never runs the full pipeline end-to-end in CI. A schema mismatch introduced in `ingest.py` that breaks a SQL model would only be caught at runtime.
-
 *Incremental load uses full-table scan.* `INSERT WHERE NOT EXISTS` checks the entire table on every run. At scale this needs a watermark (`WHERE inserted_at > last_run_max`) to avoid O(n²) behaviour.
 
 *SCD2 `valid_from` is pipeline run date, not source effective date.* If a tier change is backdated in the source file, `valid_from` reflects when the pipeline ran, not when the change was effective. Correct CDC requires a source-provided effective date.
@@ -469,7 +467,7 @@ This solution implements most modern data stack patterns at local scale.
 
 ## Migrating to AWS/Snowflake: First Principles Checklist
 
-**Context:** This solution is local-first (DuckDB, file-based config, manual execution). Moving to production AWS/Snowflake requires rethinking every assumption.
+**Context:** This solution is local-first (DuckDB, file-based config, manual execution).
 
 ### 1. Data Ingestion — From Local Files to Managed Streams
 
